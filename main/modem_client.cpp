@@ -22,12 +22,6 @@
 #include "esp_log.h"
 #include "tcp_transport_mbedtls.h"
 #include "tcp_transport_at.h"
-
-// #define CONFIG_MISO_GPIO 13
-// #define CONFIG_SCLK_GPIO 12
-// #define CONFIG_MOSI_GPIO 11
-// #define CONFIG_CS_GPIO 10
-// #define CONFIG_SPI2_HOST 
 #include "mcp3002.h"
 
 #define BROKER_URL "mqtt.eclipseprojects.io"
