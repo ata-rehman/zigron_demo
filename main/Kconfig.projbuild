@@ -98,4 +98,18 @@ menu "Example Configuration"
                 Buffer size of UART RX buffer.
     endmenu
 
+    config EXAMPLE_PERFORM_OTA
+        bool "Perform OTA in the example"
+        default n
+        help
+            Perform the OTA update after connecting to the network and mqtt broker.
+            This option is used only to exercise network stability in CMUX mode.
+
+    config EXAMPLE_PERFORM_OTA_URI
+        string "URI of the binary"
+        default "https://my.code/esp32.bin"
+        depends on EXAMPLE_PERFORM_OTA
+        help
+            HTTPS address of the update binary.
+
 endmenu

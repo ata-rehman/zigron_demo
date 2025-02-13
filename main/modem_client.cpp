@@ -22,15 +22,25 @@
 #include "esp_log.h"
 #include "tcp_transport_mbedtls.h"
 #include "tcp_transport_at.h"
+#include "esp_https_ota.h"      // For potential OTA configuration
+#include "esp_mac.h"
 #include "mcp3002.h"
+#include "driver/gpio.h"
 
 #define BROKER_URL "mqtt.eclipseprojects.io"
 #define BROKER_PORT 8883
 
 static const char *TAG = "modem_client";
+uint8_t mac_addr[6] = {0};
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
 static const int GOT_DATA_BIT = BIT2;
+
+#define TOTAL_ZONE 8
+static uint8_t zone_alert_state[TOTAL_ZONE];
+uint16_t zone_raw_value[TOTAL_ZONE];
+uint16_t zone_upper_limit[TOTAL_ZONE];
+uint16_t zone_lower_limit[TOTAL_ZONE];
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -43,6 +53,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos1", 0);
+        ESP_LOGI(TAG, "subscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -81,10 +93,15 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    esp_read_mac( mac_addr, ESP_MAC_EFUSE_FACTORY);
     event_group = xEventGroupCreate();
 
     MCP_t dev;
     mcpInit(&dev, MCP3008, CONFIG_MISO_GPIO, CONFIG_MOSI_GPIO, CONFIG_SCLK_GPIO, CONFIG_CS_GPIO, MCP_SINGLE);
+
+    gpio_set_direction( (gpio_num_t)38, GPIO_MODE_OUTPUT);
+    gpio_set_level( (gpio_num_t)38, 0);
+    gpio_set_direction( (gpio_num_t)48, GPIO_MODE_INPUT);
 
     /* Configure and create the UART DTE */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -109,10 +126,18 @@ extern "C" void app_main(void)
     /* create the DCE and initialize network manually (using AT commands) */
     auto dce = sock_dce::create(&dce_config, std::move(dte));
     if (!dce->init()) {
-        ESP_LOGE(TAG,  "Failed to setup network");
-        return;
+        ESP_LOGE(TAG,  "Failed to setup network 1");
+        // gpio_set_level( (gpio_num_t)38, 0);
+        // dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
+        // dce = sock_dce::create(&dce_config, std::move(dte));
+        // if (!dce->init()) {
+        //     ESP_LOGE(TAG,  "Failed to setup network 2");
+        // }
+        // return;
     }
-
+    ESP_LOGI(TAG, "\"0x%X%X%X%X%X%X\" MAC address",
+        mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    
     esp_mqtt_client_config_t mqtt_config = {};
     mqtt_config.broker.address.port = BROKER_PORT;
     mqtt_config.session.message_retransmit_timeout = 10000;
@@ -149,11 +174,54 @@ extern "C" void app_main(void)
         }
     }
 #else
+    // esp_http_client_config_t config = {
+    //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
+    //     // .cert_pem = (char *)server_cert_pem_start,
+    // };
+    // esp_https_ota_config_t ota_config = {
+    //     .http_config = &config,
+    // };
+    // esp_err_t ret = esp_https_ota(&ota_config);
+    // if (ret == ESP_OK) {
+    //     esp_restart();
+    // }
+    
     while (1) {
-        vTaskDelay(1);
-		ESP_LOGI(TAG, "=%d %d %d %d %d %d %d %d", mcpReadData(&dev, 0),mcpReadData(&dev, 1),mcpReadData(&dev, 2),
-        mcpReadData(&dev, 3),mcpReadData(&dev, 4),mcpReadData(&dev, 5),mcpReadData(&dev, 6),mcpReadData(&dev, 7));
-        // esp_mqtt_client_publish(mqtt_client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
+        static uint8_t loop_counter = 0;
+        // loop_counter++;
+        // for(uint8_t i = 0; i < TOTAL_ZONE; i++)
+        // {
+        //     zone_raw_value[i] = mcpReadData(&dev, i);
+        //     if (zone_raw_value[i] < zone_lower_limit[i])
+        //     {
+        //         zone_alert_state[i] |= 0x01;
+        //     }
+        //     else if (zone_raw_value[i] > zone_upper_limit[i])
+        //     {
+        //         zone_alert_state[i] |= 0x02;
+        //     }
+        // }
+        vTaskDelay(5000);
+        if (loop_counter == 0)
+        {  
+            // if (dce->set_mode(esp_modem::modem_mode::CMUX_MODE)) {
+            //     ESP_LOGI(TAG, "Modem has correctly entered multiplexed data mode");
+            // } else {
+            //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
+            //     // return;
+            // }
+
+		    printf("%d, %d,%d,%d,%d,%d,%d,%d,%d\r\n",gpio_get_level((gpio_num_t)48), mcpReadData(&dev, 0),mcpReadData(&dev, 1),mcpReadData(&dev, 2),
+            mcpReadData(&dev, 3),mcpReadData(&dev, 4),mcpReadData(&dev, 5),mcpReadData(&dev, 6),mcpReadData(&dev, 7));
+            // esp_mqtt_client_publish(mqtt_client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
+
+            // if (dce->set_mode(esp_modem::modem_mode::COMMAND_MODE)) {
+            //     ESP_LOGE(TAG, "Modem has correctly entered multiplexed command mode");
+            // } else {
+            //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
+            //     // return;
+            // }
+        }
     }
 #endif
 
