@@ -101,6 +101,12 @@ command_result get_ip(CommandableIf *t, std::string &ip)
     return command_result::FAIL;
 }
 
+command_result reset_modem(CommandableIf *t)
+{
+    ESP_LOGV(TAG, "%s", __func__ );
+    return dce_commands::generic_command(t, "AT+CFUN=1,1\r", "OK", "ERROR", 10000);
+}
+
 } // sock_commands
 
 namespace sock_dce {

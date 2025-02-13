@@ -248,6 +248,9 @@ bool DCE::init()
     assert(data_ready_fd > 0);
 
     dte->on_read(nullptr);
+    
+    reset_modem();
+    esp_modem::Task::Delay(10000);
     const int retries = 5;
     int i = 0;
     while (sync() != esp_modem::command_result::OK) {

@@ -141,39 +141,16 @@ extern "C" void app_main(void)
     esp_mqtt_client_config_t mqtt_config = {};
     mqtt_config.broker.address.port = BROKER_PORT;
     mqtt_config.session.message_retransmit_timeout = 10000;
-#ifndef CONFIG_EXAMPLE_CUSTOM_TCP_TRANSPORT
-    mqtt_config.broker.address.uri = "mqtts://127.0.0.1";
-    dce->start_listening(BROKER_PORT);
-#else
     mqtt_config.broker.address.uri = "mqtt://" BROKER_URL;
     esp_transport_handle_t at = esp_transport_at_init(dce.get());
     esp_transport_handle_t ssl = esp_transport_tls_init(at);
 
     mqtt_config.network.transport = ssl;
-#endif
+
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
     esp_mqtt_client_start(mqtt_client);
-#ifndef CONFIG_EXAMPLE_CUSTOM_TCP_TRANSPORT
-    if (!dce->connect(BROKER_URL, BROKER_PORT)) {
-        ESP_LOGE(TAG, "Failed to start DCE");
-        return;
-    }
-    while (1) {
-        while (dce->perform_sock()) {
-            ESP_LOGV(TAG, "...performing");
-        }
-        ESP_LOGE(TAG, "Loop exit.. retrying");
-        // handle disconnections errors
-        if (!dce->init()) {
-            ESP_LOGE(TAG, "Failed to reinit network");
-            return;
-        }
-        if (!dce->connect(BROKER_URL, BROKER_PORT)) {
-            ESP_LOGI(TAG, "Network reinitialized, retrying");
-        }
-    }
-#else
+
     // esp_http_client_config_t config = {
     //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
     //     // .cert_pem = (char *)server_cert_pem_start,
@@ -223,6 +200,4 @@ extern "C" void app_main(void)
             // }
         }
     }
-#endif
-
 }
