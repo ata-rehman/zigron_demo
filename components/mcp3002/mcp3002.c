@@ -152,7 +152,7 @@ int16_t mcpReadData(MCP_t * dev, int16_t channel)
 		// [OUT] -- -- 00 SB B11 B10 B9 B8 B7 B6 B5 B4 B3 B2 B1 B0
 		wbuf[0] = 0x00;
 	}
-	ESP_LOGD(TAG, "wbuf=0x%02X 0x%02X", wbuf[0], wbuf[1]);
+	// ESP_LOGD(TAG, "wbuf=0x%02X 0x%02X", wbuf[0], wbuf[1]);
 	spi_transaction_t SPITransaction;
 	esp_err_t ret;
 
@@ -166,7 +166,7 @@ int16_t mcpReadData(MCP_t * dev, int16_t channel)
 	ret = spi_device_polling_transmit( dev->_handle, &SPITransaction );
 #endif
 	assert(ret==ESP_OK); 
-	ESP_LOGD(TAG, "rbuf[0]=%02X rbuf[1]=%02X rbuf[2]=%02X", rbuf[0], rbuf[1], rbuf[2]);
+	// ESP_LOGD(TAG, "rbuf[0]=%02X rbuf[1]=%02X rbuf[2]=%02X", rbuf[0], rbuf[1], rbuf[2]);
 	if (dev->_model == MCP3001) {
 		val = ((rbuf[0]&0x1F)<<5)+(rbuf[1]>>3);
 	} else if (dev->_model == MCP3201) {
@@ -191,7 +191,7 @@ int16_t mcpReadData(MCP_t * dev, int16_t channel)
 			}
 		}
 	}
-	ESP_LOGD(TAG, "val=%02X", val);
+	// ESP_LOGD(TAG, "val=%02X", val);
 	return(val);
 }
 

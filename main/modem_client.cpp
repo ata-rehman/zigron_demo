@@ -36,11 +36,18 @@ static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
 static const int GOT_DATA_BIT = BIT2;
 
+char data_buff[255];
+char topic_buff[255];
+
 #define TOTAL_ZONE 8
 static uint8_t zone_alert_state[TOTAL_ZONE];
 uint16_t zone_raw_value[TOTAL_ZONE];
-uint16_t zone_upper_limit[TOTAL_ZONE];
-uint16_t zone_lower_limit[TOTAL_ZONE];
+uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300};
+uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700};
+
+uint8_t alert_flg = 0;
+uint8_t prev_alert_flg = 0;
+static uint8_t loop_counter = 0;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -51,13 +58,18 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
+        topic_buff[0] = 0;
+        sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/CLEAR",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        msg_id = esp_mqtt_client_subscribe(client, topic_buff, 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-        msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos1", 0);
+        topic_buff[0] = 0;
+        sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/COMMAND",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        msg_id = esp_mqtt_client_subscribe(client, topic_buff, 0);
         ESP_LOGI(TAG, "subscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        esp_restart();
         break;
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
@@ -74,6 +86,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
+        zone_alert_state[0] = 0;zone_alert_state[1] = 0;zone_alert_state[2] = 0;zone_alert_state[3] = 0;
+        zone_alert_state[4] = 0;zone_alert_state[5] = 0;zone_alert_state[6] = 0;zone_alert_state[7] = 0;
+        alert_flg = 0;
+        loop_counter = 0xF0;
         xEventGroupSetBits(event_group, GOT_DATA_BIT);
         break;
     case MQTT_EVENT_ERROR:
@@ -84,7 +100,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
     }
 }
-
 
 extern "C" void app_main(void)
 {
@@ -99,6 +114,8 @@ extern "C" void app_main(void)
     MCP_t dev;
     mcpInit(&dev, MCP3008, CONFIG_MISO_GPIO, CONFIG_MOSI_GPIO, CONFIG_SCLK_GPIO, CONFIG_CS_GPIO, MCP_SINGLE);
 
+    gpio_set_direction( (gpio_num_t)7, GPIO_MODE_OUTPUT);
+    gpio_set_level( (gpio_num_t)7, 0);
     gpio_set_direction( (gpio_num_t)38, GPIO_MODE_OUTPUT);
     gpio_set_level( (gpio_num_t)38, 0);
     gpio_set_direction( (gpio_num_t)48, GPIO_MODE_INPUT);
@@ -125,7 +142,16 @@ extern "C" void app_main(void)
 
     /* create the DCE and initialize network manually (using AT commands) */
     auto dce = sock_dce::create(&dce_config, std::move(dte));
-    if (!dce->init()) {
+
+    gpio_set_level( (gpio_num_t)7, 1);
+    vTaskDelay(100);
+    gpio_set_level( (gpio_num_t)7, 0);
+    vTaskDelay(100);
+    while (!dce->init()) {
+        gpio_set_level( (gpio_num_t)7, 1);
+        vTaskDelay(100);
+        gpio_set_level( (gpio_num_t)7, 0);
+        vTaskDelay(100);
         ESP_LOGE(TAG,  "Failed to setup network 1");
         // gpio_set_level( (gpio_num_t)38, 0);
         // dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
@@ -135,7 +161,7 @@ extern "C" void app_main(void)
         // }
         // return;
     }
-    ESP_LOGI(TAG, "\"0x%X%X%X%X%X%X\" MAC address",
+    ESP_LOGI(TAG, "\"%02X%02X%02X%02X%02X%02X\" MAC address",
         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
     esp_mqtt_client_config_t mqtt_config = {};
@@ -164,22 +190,30 @@ extern "C" void app_main(void)
     // }
     
     while (1) {
-        static uint8_t loop_counter = 0;
-        // loop_counter++;
-        // for(uint8_t i = 0; i < TOTAL_ZONE; i++)
-        // {
-        //     zone_raw_value[i] = mcpReadData(&dev, i);
-        //     if (zone_raw_value[i] < zone_lower_limit[i])
-        //     {
-        //         zone_alert_state[i] |= 0x01;
-        //     }
-        //     else if (zone_raw_value[i] > zone_upper_limit[i])
-        //     {
-        //         zone_alert_state[i] |= 0x02;
-        //     }
-        // }
-        vTaskDelay(5000);
-        if (loop_counter == 0)
+        loop_counter++;
+        for(uint8_t i = 0; i < TOTAL_ZONE; i++)
+        {
+            zone_raw_value[i] = mcpReadData(&dev, i);
+            if (zone_raw_value[i] < zone_lower_limit[i])
+            {
+                zone_alert_state[i] |= 0x01;
+                uint8_t bitmask = 1 << i; 
+                alert_flg |= bitmask; 
+            }
+            else if (zone_raw_value[i] > zone_upper_limit[i])
+            {
+                zone_alert_state[i] |= 0x02;
+                uint8_t bitmask = 1 << i; 
+                alert_flg |= bitmask; 
+            }
+            else
+            {
+                uint8_t bitmask = 1 << i;
+                alert_flg &= ~bitmask;
+            }
+        }
+        vTaskDelay(10);
+        if (loop_counter == 0 || prev_alert_flg != alert_flg)
         {  
             // if (dce->set_mode(esp_modem::modem_mode::CMUX_MODE)) {
             //     ESP_LOGI(TAG, "Modem has correctly entered multiplexed data mode");
@@ -187,10 +221,23 @@ extern "C" void app_main(void)
             //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
             //     // return;
             // }
-
-		    printf("%d, %d,%d,%d,%d,%d,%d,%d,%d\r\n",gpio_get_level((gpio_num_t)48), mcpReadData(&dev, 0),mcpReadData(&dev, 1),mcpReadData(&dev, 2),
-            mcpReadData(&dev, 3),mcpReadData(&dev, 4),mcpReadData(&dev, 5),mcpReadData(&dev, 6),mcpReadData(&dev, 7));
-            // esp_mqtt_client_publish(mqtt_client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
+            data_buff[0] = 0;
+            topic_buff[0] = 0;
+		    sprintf(data_buff,"{\"BUZZER\":\"%d\",\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\"]}%c",
+            gpio_get_level((gpio_num_t)48),zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],
+            zone_raw_value[5],zone_raw_value[6],zone_raw_value[7],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],
+            zone_alert_state[3],zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],0);
+            
+            if(prev_alert_flg != alert_flg)
+            {
+                sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/ALERT",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+            }
+            else
+            {
+                sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/HB",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+            }
+            esp_mqtt_client_publish(mqtt_client, topic_buff, data_buff, 0, 0, 0);
+            printf("%X %X %s :%s\r\n",alert_flg, prev_alert_flg, topic_buff, data_buff);
 
             // if (dce->set_mode(esp_modem::modem_mode::COMMAND_MODE)) {
             //     ESP_LOGE(TAG, "Modem has correctly entered multiplexed command mode");
@@ -199,5 +246,6 @@ extern "C" void app_main(void)
             //     // return;
             // }
         }
+        prev_alert_flg = alert_flg;
     }
 }

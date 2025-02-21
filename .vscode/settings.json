@@ -1,4 +1,12 @@
 {
     "idf.flashType": "UART",
-    "idf.portWin": "COM8"
+    "idf.portWin": "COM8",
+    "vsmqtt.brokerProfiles": [
+        {
+            "name": "eclipse",
+            "host": "mqtt.eclipseprojects.io",
+            "port": 1883,
+            "clientId": "vsmqtt_client_c84e"
+        }
+    ]
 }
