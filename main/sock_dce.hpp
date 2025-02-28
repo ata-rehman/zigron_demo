@@ -25,6 +25,17 @@ enum class status {
     PENDING
 };
 
+struct MODEM_DNA_STATS
+{
+    std::string imei;
+    std::string imsi;
+    std::string operator_name;
+    std::string module_name;
+    std::string ip_address;
+    int signal_quality;
+    int ber;
+};
+
 class Responder {
 public:
     enum class ret {
@@ -109,7 +120,8 @@ esp_modem::return_type name(__VA_ARGS__);
 
 #undef ESP_MODEM_DECLARE_DCE_COMMAND
 
-    bool init();
+    bool init(sock_dce::MODEM_DNA_STATS* modem_dna);
+    bool alert_sms(const std::string &number, const std::string &message);
     bool connect(std::string host, int port);
 
     void start_listening(int port);

@@ -35,6 +35,7 @@ uint8_t mac_addr[6] = {0};
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
 static const int GOT_DATA_BIT = BIT2;
+struct sock_dce::MODEM_DNA_STATS modem_dna;
 
 char data_buff[255];
 char topic_buff[255];
@@ -147,12 +148,22 @@ extern "C" void app_main(void)
     vTaskDelay(100);
     gpio_set_level( (gpio_num_t)7, 0);
     vTaskDelay(100);
-    while (!dce->init()) {
-        gpio_set_level( (gpio_num_t)7, 1);
-        vTaskDelay(100);
-        gpio_set_level( (gpio_num_t)7, 0);
-        vTaskDelay(100);
+    while (!dce->init(&modem_dna))
+    {
         ESP_LOGE(TAG,  "Failed to setup network 1");
+        data_buff[0] = 0;
+        topic_buff[0] = 0;
+        sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
+        modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
+       
+        sprintf(topic_buff,"03345472486");
+        dce->alert_sms(topic_buff, data_buff);
+        ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
+        vTaskDelay(60000);
+        // gpio_set_level( (gpio_num_t)7, 1);
+        // vTaskDelay(100);
+        // gpio_set_level( (gpio_num_t)7, 0);
+        // vTaskDelay(100);
         // gpio_set_level( (gpio_num_t)38, 0);
         // dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
         // dce = sock_dce::create(&dce_config, std::move(dte));
@@ -161,6 +172,18 @@ extern "C" void app_main(void)
         // }
         // return;
     }
+
+    // sprintf(topic_buff,"03211372000");
+    // dce->alert_sms(topic_buff, data_buff);
+    // ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
+
+    ESP_LOGI(TAG, "Got IP %s", modem_dna.ip_address.c_str());
+    ESP_LOGI(TAG, "operater %s",modem_dna.operator_name.c_str());
+    ESP_LOGI(TAG, "IMSI %s",modem_dna.imsi.c_str());
+    ESP_LOGI(TAG, "IMEI %s",modem_dna.imei.c_str());
+    ESP_LOGI(TAG, "module %s",modem_dna.module_name.c_str());
+    ESP_LOGI(TAG, "CSQ %d %d",modem_dna.signal_quality, modem_dna.ber);
+
     ESP_LOGI(TAG, "\"%02X%02X%02X%02X%02X%02X\" MAC address",
         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
@@ -212,21 +235,16 @@ extern "C" void app_main(void)
                 alert_flg &= ~bitmask;
             }
         }
-        vTaskDelay(10);
+        vTaskDelay(5);
         if (loop_counter == 0 || prev_alert_flg != alert_flg)
         {  
-            // if (dce->set_mode(esp_modem::modem_mode::CMUX_MODE)) {
-            //     ESP_LOGI(TAG, "Modem has correctly entered multiplexed data mode");
-            // } else {
-            //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
-            //     // return;
-            // }
             data_buff[0] = 0;
             topic_buff[0] = 0;
-		    sprintf(data_buff,"{\"BUZZER\":\"%d\",\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\",\"%X\"]}%c",
+		    sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
             gpio_get_level((gpio_num_t)48),zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],
             zone_raw_value[5],zone_raw_value[6],zone_raw_value[7],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],
-            zone_alert_state[3],zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],0);
+            zone_alert_state[3],zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],
+            modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
             
             if(prev_alert_flg != alert_flg)
             {
@@ -236,8 +254,8 @@ extern "C" void app_main(void)
             {
                 sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/HB",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
-            esp_mqtt_client_publish(mqtt_client, topic_buff, data_buff, 0, 0, 0);
-            printf("%X %X %s :%s\r\n",alert_flg, prev_alert_flg, topic_buff, data_buff);
+            int publish_response = esp_mqtt_client_publish(mqtt_client, topic_buff, data_buff, 0, 0, 0);
+            ESP_LOGI(TAG, "%X %X %X %s :%s\r\n",publish_response, alert_flg, prev_alert_flg, topic_buff, data_buff);
 
             // if (dce->set_mode(esp_modem::modem_mode::COMMAND_MODE)) {
             //     ESP_LOGE(TAG, "Modem has correctly entered multiplexed command mode");
@@ -245,6 +263,13 @@ extern "C" void app_main(void)
             //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
             //     // return;
             // }
+            // esp_mqtt_client_disconnect(mqtt_client);
+            // sprintf(topic_buff,"03345472486");
+            // dce->alert_sms(topic_buff, data_buff);
+            // mqtt_client = esp_mqtt_client_init(&mqtt_config);
+            // esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
+            // esp_mqtt_client_start(mqtt_client);
+            // esp_mqtt_client_reconnect(mqtt_client);
         }
         prev_alert_flg = alert_flg;
     }

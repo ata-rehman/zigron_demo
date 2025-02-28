@@ -239,7 +239,7 @@ bool DCE::connect(std::string host, int port)
     return true;
 }
 
-bool DCE::init()
+bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
 {
     esp_vfs_eventfd_config_t config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
     esp_vfs_eventfd_register(&config);
@@ -248,9 +248,7 @@ bool DCE::init()
     assert(data_ready_fd > 0);
 
     dte->on_read(nullptr);
-    
-    reset_modem();
-    esp_modem::Task::Delay(20000);
+    set_radio_state(1);
 
     const int retries = 5;
     int i = 0;
@@ -282,18 +280,30 @@ bool DCE::init()
     }
     ESP_LOGD(TAG, "Network opened");
     i = 0;
-    std::string ip_addr;
-    while (get_ip(ip_addr) != esp_modem::command_result::OK) {
+    while (get_ip(modem_dna->ip_address) != esp_modem::command_result::OK) {
         if (i++ > retries) {
             ESP_LOGE(TAG, "Failed obtain an IP address");
             return false;
         }
         esp_modem::Task::Delay(5000);
     }
-    ESP_LOGI(TAG, "Got IP %s", ip_addr.c_str());
+    int actt;
+    ESP_LOGI(TAG, "Got IP %s", modem_dna->ip_address.c_str());
+    get_operator_name(modem_dna->operator_name, actt);
+    get_imsi(modem_dna->imsi);
+    get_imei(modem_dna->imei);
+    get_module_name(modem_dna->module_name);
+    get_signal_quality(modem_dna->signal_quality, modem_dna->ber);
     return true;
 }
 
+bool DCE::alert_sms(const std::string &number, const std::string &message)
+{
+    ESP_LOGE(TAG, "SMS result");
+    sms_txt_mode(true);
+    send_sms(number, message);
+    return true;
+}
 
 class Factory: public ::esp_modem::dce_factory::Factory {
 public:
