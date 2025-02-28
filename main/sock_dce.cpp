@@ -260,6 +260,13 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
         esp_modem::Task::Delay(1000);
     }
     ESP_LOGD(TAG, "Modem in sync");
+    // get_creg();
+    get_operator_name(modem_dna->operator_name, actt);
+    get_imsi(modem_dna->imsi);
+    get_imei(modem_dna->imei);
+    get_module_name(modem_dna->module_name);
+    get_signal_quality(modem_dna->signal_quality, modem_dna->ber);
+
     i = 0;
     while (setup_data_mode() != true) {
         if (i++ > retries) {
@@ -289,11 +296,6 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
     }
     int actt;
     ESP_LOGI(TAG, "Got IP %s", modem_dna->ip_address.c_str());
-    get_operator_name(modem_dna->operator_name, actt);
-    get_imsi(modem_dna->imsi);
-    get_imei(modem_dna->imei);
-    get_module_name(modem_dna->module_name);
-    get_signal_quality(modem_dna->signal_quality, modem_dna->ber);
     return true;
 }
 

@@ -16,6 +16,11 @@ namespace sock_commands {
 
 using namespace esp_modem;
 
+// command_result get_creg(CommandableIf *t)
+// {
+//     return dce_commands::generic_command(t, "AT+CREG?\r", "OK", "ERROR", 10000);
+// }
+
 command_result net_open(CommandableIf *t)
 {
     ESP_LOGV(TAG, "%s", __func__ );
