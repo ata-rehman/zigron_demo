@@ -1388,7 +1388,6 @@ build/partition_table/partition-table.bin
 build/esp-idf/mqtt/CMakeFiles/__idf_mqtt.dir/esp-mqtt/mqtt5_client.c.obj
 build/esp-idf/mqtt/CMakeFiles/__idf_mqtt.dir/esp-mqtt/lib/mqtt5_msg.c.obj
 build/log/idf_py_stderr_output_4920
-.gitignore
 build/log/idf_py_stderr_output_21564
 build/log/idf_py_stdout_output_4920
 build/log/idf_py_stdout_output_21564
