@@ -115,11 +115,10 @@ extern "C" void app_main(void)
     MCP_t dev;
     mcpInit(&dev, MCP3008, CONFIG_MISO_GPIO, CONFIG_MOSI_GPIO, CONFIG_SCLK_GPIO, CONFIG_CS_GPIO, MCP_SINGLE);
 
-    gpio_set_direction( (gpio_num_t)7, GPIO_MODE_OUTPUT);
-    gpio_set_level( (gpio_num_t)7, 0);
-    gpio_set_direction( (gpio_num_t)38, GPIO_MODE_OUTPUT);
-    gpio_set_level( (gpio_num_t)38, 0);
-    gpio_set_direction( (gpio_num_t)48, GPIO_MODE_INPUT);
+    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN, GPIO_MODE_INPUT);
+    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, GPIO_MODE_INPUT);
 
     /* Configure and create the UART DTE */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -144,10 +143,6 @@ extern "C" void app_main(void)
     /* create the DCE and initialize network manually (using AT commands) */
     auto dce = sock_dce::create(&dce_config, std::move(dte));
 
-    gpio_set_level( (gpio_num_t)7, 1);
-    vTaskDelay(100);
-    gpio_set_level( (gpio_num_t)7, 0);
-    vTaskDelay(100);
     while (!dce->init(&modem_dna))
     {
         ESP_LOGE(TAG,  "Failed to setup network 1");
@@ -156,15 +151,15 @@ extern "C" void app_main(void)
         sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
         modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
        
-        sprintf(topic_buff,"03345472486");
-        dce->alert_sms(topic_buff, data_buff);
-        ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
-        vTaskDelay(60000);
-        // gpio_set_level( (gpio_num_t)7, 1);
+        // sprintf(topic_buff,"03345472486");
+        // dce->alert_sms(topic_buff, data_buff);
+        // ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
+        // vTaskDelay(60000);
+        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 1);
         // vTaskDelay(100);
-        // gpio_set_level( (gpio_num_t)7, 0);
+        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 0);
         // vTaskDelay(100);
-        // gpio_set_level( (gpio_num_t)38, 0);
+        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, 0);
         // dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
         // dce = sock_dce::create(&dce_config, std::move(dte));
         // if (!dce->init()) {
@@ -187,6 +182,23 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "\"%02X%02X%02X%02X%02X%02X\" MAC address",
         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
+    esp_http_client_config_t config = {
+        .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
+        // .cert_pem = (char *)server_cert_pem_start,
+    };
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
+
+    // esp_transport_handle_t at = esp_transport_at_init(dce.get());
+    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
+    // // ota_config.network.transport = ssl;
+
+    esp_err_t ret = esp_https_ota(&ota_config);
+    // if (ret == ESP_OK) {
+    //     esp_restart();
+    // }
+
     esp_mqtt_client_config_t mqtt_config = {};
     mqtt_config.broker.address.port = BROKER_PORT;
     mqtt_config.session.message_retransmit_timeout = 10000;
@@ -199,18 +211,6 @@ extern "C" void app_main(void)
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
     esp_mqtt_client_start(mqtt_client);
-
-    // esp_http_client_config_t config = {
-    //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
-    //     // .cert_pem = (char *)server_cert_pem_start,
-    // };
-    // esp_https_ota_config_t ota_config = {
-    //     .http_config = &config,
-    // };
-    // esp_err_t ret = esp_https_ota(&ota_config);
-    // if (ret == ESP_OK) {
-    //     esp_restart();
-    // }
     
     while (1) {
         loop_counter++;
@@ -241,7 +241,7 @@ extern "C" void app_main(void)
             data_buff[0] = 0;
             topic_buff[0] = 0;
 		    sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
-            gpio_get_level((gpio_num_t)48),zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],
+            gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN),zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],
             zone_raw_value[5],zone_raw_value[6],zone_raw_value[7],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],
             zone_alert_state[3],zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],
             modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);

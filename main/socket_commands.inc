@@ -55,4 +55,11 @@ ESP_MODEM_DECLARE_DCE_COMMAND(get_ip, command_result, 1, STRING_OUT(p1, addr)) \
  * @param[in] mode 0=auto, 1=manual
  * @return OK, FAIL or TIMEOUT
  */ \
-ESP_MODEM_DECLARE_DCE_COMMAND(set_rx_mode, command_result, 1, INT_IN(p1, mode))
+ESP_MODEM_DECLARE_DCE_COMMAND(set_rx_mode, command_result, 1, INT_IN(p1, mode)) \
+    \
+/**
+ * @brief Sets Rx mode
+ * @param[in] mode 0=auto, 1=manual
+ * @return OK, FAIL or TIMEOUT
+ */ \
+ESP_MODEM_DECLARE_DCE_COMMAND(get_creg, command_result, 0)

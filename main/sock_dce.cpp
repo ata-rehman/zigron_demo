@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include "esp_vfs.h"
 #include "esp_vfs_eventfd.h"
-
+#include "driver/gpio.h"
 #include "sock_dce.hpp"
 
 namespace sock_dce {
@@ -248,6 +248,10 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
     assert(data_ready_fd > 0);
 
     dte->on_read(nullptr);
+
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, 0); //high for A and LOW for Sim B
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 1);vTaskDelay(50);
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 0);vTaskDelay(50);
     set_radio_state(1);
 
     const int retries = 5;
@@ -260,7 +264,8 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
         esp_modem::Task::Delay(1000);
     }
     ESP_LOGD(TAG, "Modem in sync");
-    // get_creg();
+    int actt;
+    get_creg();
     get_operator_name(modem_dna->operator_name, actt);
     get_imsi(modem_dna->imsi);
     get_imei(modem_dna->imei);
@@ -294,7 +299,6 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
         }
         esp_modem::Task::Delay(5000);
     }
-    int actt;
     ESP_LOGI(TAG, "Got IP %s", modem_dna->ip_address.c_str());
     return true;
 }

@@ -4,7 +4,7 @@ elseif(CONFIG_EXAMPLE_MODEM_DEVICE_SIM7600)
     set(device_srcs sock_commands_sim7600.cpp)
 endif()
 
-idf_component_register(SRCS "modem_client.cpp"
+idf_component_register(SRCS "sock_commands_bg96.cpp" "modem_client.cpp"
                             "sock_dce.cpp"
                             "tcp_transport_at.cpp"
                             "${device_srcs}"

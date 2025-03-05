@@ -112,4 +112,32 @@ menu "Example Configuration"
         help
             HTTPS address of the update binary.
 
+    config EXAMPLE_LED_STATUS_PIN
+        int "LED Pin Number"
+        default 14
+        range 0 56
+        help
+            Pin number of LED_STATUS_PIN.
+
+    config EXAMPLE_SIM_SELECT_PIN
+        int "Sim Select Pin Number"
+        default 38
+        range 0 56
+        help
+            Pin number of SIM_SELECT_PIN.
+
+    config EXAMPLE_MODEM_RESET_PIN
+        int "Modem Reset Pin Number"
+        default 7
+        range 0 56
+        help
+            Pin number of MODEM_RESET_PIN.
+
+    config EXAMPLE_BUZZER_STATUS_PIN
+        int "Buzzer Pin Number"
+        default 48
+        range 0 56
+        help
+            Pin number of BUZZER_STATUS_PIN.
+
 endmenu
