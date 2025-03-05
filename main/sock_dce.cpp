@@ -239,6 +239,7 @@ bool DCE::connect(std::string host, int port)
     return true;
 }
 
+static bool sim_select_flag = 0;
 bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
 {
     esp_vfs_eventfd_config_t config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
@@ -249,9 +250,13 @@ bool DCE::init(sock_dce::MODEM_DNA_STATS* modem_dna)
 
     dte->on_read(nullptr);
 
-    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, 0); //high for A and LOW for Sim B
-    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 1);vTaskDelay(50);
-    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 0);vTaskDelay(50);
+    if(sim_select_flag == 0)sim_select_flag = 1;
+    else sim_select_flag = 0;
+
+    ESP_LOGI(TAG, "SIM flag %X",sim_select_flag);
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, sim_select_flag);vTaskDelay(100); //high for A and LOW for Sim B
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 1);vTaskDelay(100);
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 0);vTaskDelay(100);
     set_radio_state(1);
 
     const int retries = 5;

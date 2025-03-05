@@ -182,19 +182,19 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "\"%02X%02X%02X%02X%02X%02X\" MAC address",
         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
-    esp_http_client_config_t config = {
-        .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
-        // .cert_pem = (char *)server_cert_pem_start,
-    };
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-    };
+    // esp_http_client_config_t config = {
+    //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
+    //     // .cert_pem = (char *)server_cert_pem_start,
+    // };
+    // esp_https_ota_config_t ota_config = {
+    //     .http_config = &config,
+    // };
 
     // esp_transport_handle_t at = esp_transport_at_init(dce.get());
     // esp_transport_handle_t ssl = esp_transport_tls_init(at);
     // // ota_config.network.transport = ssl;
 
-    esp_err_t ret = esp_https_ota(&ota_config);
+    // esp_err_t ret = esp_https_ota(&ota_config);
     // if (ret == ESP_OK) {
     //     esp_restart();
     // }
