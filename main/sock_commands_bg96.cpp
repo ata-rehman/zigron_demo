@@ -62,7 +62,8 @@ command_result tcp_open(CommandableIf *t, const std::string &host, int port, int
 command_result tcp_close(CommandableIf *t)
 {
     ESP_LOGV(TAG, "%s", __func__ );
-    return dce_commands::generic_command(t, "AT+QICLOSE=0\r", "OK", "ERROR", 10000);
+    // return dce_commands::generic_command(t, "AT+QICLOSE=0\r", "OK", "ERROR", 10000);
+    return command_result::OK;
 }
 
 command_result tcp_send(CommandableIf *t, uint8_t *data, size_t len)

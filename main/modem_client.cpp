@@ -26,9 +26,14 @@
 #include "esp_mac.h"
 #include "mcp3002.h"
 #include "driver/gpio.h"
+#include "esp_task_wdt.h"
+#include "esp_timer.h"
 
+#define PACKET_TIMEOUT 300                  //30 seconds
 #define BROKER_URL "mqtt.eclipseprojects.io"
 #define BROKER_PORT 8883
+
+MCP_t dev;
 
 static const char *TAG = "modem_client";
 uint8_t mac_addr[6] = {0};
@@ -40,15 +45,56 @@ struct sock_dce::MODEM_DNA_STATS modem_dna;
 char data_buff[255];
 char topic_buff[255];
 
-#define TOTAL_ZONE 8
+#define TOTAL_ZONE 9
 static uint8_t zone_alert_state[TOTAL_ZONE];
 uint16_t zone_raw_value[TOTAL_ZONE];
-uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300};
-uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700};
+uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300,0};
+uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700,0};
+// uint16_t zone_lower_limit[TOTAL_ZONE] = {500,500,500,500,500,500,500,500,0};
+// uint16_t zone_upper_limit[TOTAL_ZONE] = {900,900,900,900,900,900,900,900,0};
 
-uint8_t alert_flg = 0;
-uint8_t prev_alert_flg = 0;
-static uint8_t loop_counter = 0;
+uint16_t alert_flg = 0;
+uint16_t prev_alert_flg = 0;
+static uint16_t loop_counter = 0;
+static uint16_t prev_loop_counter = 0;
+
+static void periodic_timer_callback(void* arg)
+{
+    loop_counter++;
+    gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);
+    if(zone_raw_value[TOTAL_ZONE-1] != gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN))
+    {
+        alert_flg |= 0x0100;
+        zone_alert_state[TOTAL_ZONE-1] = 0x01;
+    }
+    else
+    {
+        alert_flg &= ~0x0100;
+    }
+
+    zone_raw_value[TOTAL_ZONE-1] = gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN);
+    for(uint8_t i = 0; i < (TOTAL_ZONE-1); i++)
+    {
+        zone_raw_value[i] = mcpReadData(&dev, i);
+        
+        uint16_t bitmask = 1 << i;
+        if (zone_raw_value[i] < zone_lower_limit[i])
+        {
+            zone_alert_state[i] |= 0x01;
+            alert_flg |= bitmask; 
+        }
+        else if (zone_raw_value[i] > zone_upper_limit[i])
+        {
+            zone_alert_state[i] |= 0x02;
+            alert_flg |= bitmask; 
+        }
+        else
+        {
+            alert_flg &= ~bitmask;
+        }
+        // ESP_LOGI(TAG, "%d %d %X %X %d %d %d %d", i, bitmask, alert_flg, prev_alert_flg, zone_lower_limit[i], zone_upper_limit[i], zone_raw_value[i], zone_alert_state[i]);
+    }
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -67,6 +113,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/COMMAND",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
         msg_id = esp_mqtt_client_subscribe(client, topic_buff, 0);
         ESP_LOGI(TAG, "subscribe successful, msg_id=%d", msg_id);
+        topic_buff[0] = 0;
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -89,12 +136,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         printf("DATA=%.*s\r\n", event->data_len, event->data);
         zone_alert_state[0] = 0;zone_alert_state[1] = 0;zone_alert_state[2] = 0;zone_alert_state[3] = 0;
         zone_alert_state[4] = 0;zone_alert_state[5] = 0;zone_alert_state[6] = 0;zone_alert_state[7] = 0;
+        zone_alert_state[8] = 0;
         alert_flg = 0;
-        loop_counter = 0xF0;
+        loop_counter = PACKET_TIMEOUT-1;
         xEventGroupSetBits(event_group, GOT_DATA_BIT);
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+        esp_restart();
         break;
     default:
         ESP_LOGI(TAG, "MQTT other event id: %d", event->event_id);
@@ -104,7 +153,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 extern "C" void app_main(void)
 {
-
     /* Init and register system/core components */
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -112,13 +160,23 @@ extern "C" void app_main(void)
     esp_read_mac( mac_addr, ESP_MAC_EFUSE_FACTORY);
     event_group = xEventGroupCreate();
 
-    MCP_t dev;
     mcpInit(&dev, MCP3008, CONFIG_MISO_GPIO, CONFIG_MOSI_GPIO, CONFIG_SCLK_GPIO, CONFIG_CS_GPIO, MCP_SINGLE);
 
     gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN, GPIO_MODE_INPUT);
-    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, GPIO_MODE_INPUT);
+    gpio_set_direction( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, GPIO_MODE_OUTPUT);
+
+    const esp_timer_create_args_t periodic_timer_args = {
+        .callback = &periodic_timer_callback,
+        /* name is optional, but may help identify the timer when debugging */
+        .name = "periodic"
+    };
+
+    esp_timer_handle_t periodic_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
+    /* The timer has been created but is not running yet */
+    ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 100000));
 
     /* Configure and create the UART DTE */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -146,31 +204,15 @@ extern "C" void app_main(void)
     while (!dce->init(&modem_dna))
     {
         ESP_LOGE(TAG,  "Failed to setup network 1");
-        data_buff[0] = 0;
-        topic_buff[0] = 0;
-        sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
-        modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
-       
-        // sprintf(topic_buff,"03345472486");
-        // dce->alert_sms(topic_buff, data_buff);
-        // ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
-        // vTaskDelay(60000);
-        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 1);
-        // vTaskDelay(100);
-        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_MODEM_RESET_PIN, 0);
-        // vTaskDelay(100);
-        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_SIM_SELECT_PIN, 0);
-        // dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
-        // dce = sock_dce::create(&dce_config, std::move(dte));
-        // if (!dce->init()) {
-        //     ESP_LOGE(TAG,  "Failed to setup network 2");
-        // }
-        // return;
     }
 
-    // sprintf(topic_buff,"03211372000");
+    data_buff[0] = 0;
+    topic_buff[0] = 0;
+    sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
+    modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
+   
+    // sprintf(topic_buff,"03345472486");
     // dce->alert_sms(topic_buff, data_buff);
-    // ESP_LOGI(TAG, "%s :%s\r\n", topic_buff, data_buff);
 
     ESP_LOGI(TAG, "Got IP %s", modem_dna.ip_address.c_str());
     ESP_LOGI(TAG, "operater %s",modem_dna.operator_name.c_str());
@@ -192,7 +234,8 @@ extern "C" void app_main(void)
 
     // esp_transport_handle_t at = esp_transport_at_init(dce.get());
     // esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    // // ota_config.network.transport = ssl;
+    // config->transport.
+    // // config.network.transport = ssl;
 
     // esp_err_t ret = esp_https_ota(&ota_config);
     // if (ret == ESP_OK) {
@@ -211,39 +254,16 @@ extern "C" void app_main(void)
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
     esp_mqtt_client_start(mqtt_client);
-    
+
     while (1) {
-        loop_counter++;
-        for(uint8_t i = 0; i < TOTAL_ZONE; i++)
-        {
-            zone_raw_value[i] = mcpReadData(&dev, i);
-            if (zone_raw_value[i] < zone_lower_limit[i])
-            {
-                zone_alert_state[i] |= 0x01;
-                uint8_t bitmask = 1 << i; 
-                alert_flg |= bitmask; 
-            }
-            else if (zone_raw_value[i] > zone_upper_limit[i])
-            {
-                zone_alert_state[i] |= 0x02;
-                uint8_t bitmask = 1 << i; 
-                alert_flg |= bitmask; 
-            }
-            else
-            {
-                uint8_t bitmask = 1 << i;
-                alert_flg &= ~bitmask;
-            }
-        }
-        vTaskDelay(5);
-        if (loop_counter == 0 || prev_alert_flg != alert_flg)
+        if (loop_counter%PACKET_TIMEOUT == 0 || prev_alert_flg != alert_flg)
         {  
             data_buff[0] = 0;
             topic_buff[0] = 0;
-		    sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
-            gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN),zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],
-            zone_raw_value[5],zone_raw_value[6],zone_raw_value[7],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],
-            zone_alert_state[3],zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],
+            sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
+            zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],zone_raw_value[5],zone_raw_value[6],
+            zone_raw_value[7],zone_raw_value[8],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],zone_alert_state[3],
+            zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],zone_alert_state[8],
             modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
             
             if(prev_alert_flg != alert_flg)
@@ -253,24 +273,23 @@ extern "C" void app_main(void)
             else
             {
                 sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/HB",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-            }
+            } 
             int publish_response = esp_mqtt_client_publish(mqtt_client, topic_buff, data_buff, 0, 0, 0);
-            ESP_LOGI(TAG, "%X %X %X %s :%s\r\n",publish_response, alert_flg, prev_alert_flg, topic_buff, data_buff);
-
-            // if (dce->set_mode(esp_modem::modem_mode::COMMAND_MODE)) {
-            //     ESP_LOGE(TAG, "Modem has correctly entered multiplexed command mode");
-            // } else {
-            //     ESP_LOGE(TAG, "Failed to configure multiplexed command mode... exiting");
-            //     // return;
-            // }
-            // esp_mqtt_client_disconnect(mqtt_client);
-            // sprintf(topic_buff,"03345472486");
-            // dce->alert_sms(topic_buff, data_buff);
-            // mqtt_client = esp_mqtt_client_init(&mqtt_config);
-            // esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
-            // esp_mqtt_client_start(mqtt_client);
-            // esp_mqtt_client_reconnect(mqtt_client);
+            
+            if(publish_response == 0xFFFFFFFF)
+            {
+                esp_restart();               
+            }
+            ESP_LOGI(TAG, "%X %X %s :%s\r\n", alert_flg, prev_alert_flg, topic_buff, data_buff);
         }
         prev_alert_flg = alert_flg;
+
+        gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(1);
+        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);vTaskDelay(1);
+        // if(prev_loop_counter == loop_counter)
+        // {
+        //     esp_restart();
+        // }       
+        // prev_loop_counter = loop_counter;
     }
 }
