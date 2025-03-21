@@ -29,14 +29,17 @@
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
 
-#define PACKET_TIMEOUT 300                  //30 seconds
+#define PACKET_TIMEOUT 600                  //30 seconds
 #define BROKER_URL "mqtt.eclipseprojects.io"
 #define BROKER_PORT 8883
+
+#define FW_VER "0.01"
 
 MCP_t dev;
 
 static const char *TAG = "modem_client";
 uint8_t mac_addr[6] = {0};
+char mac_string[13] = "0123456789AB";
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
 static const int GOT_DATA_BIT = BIT2;
@@ -48,10 +51,10 @@ char topic_buff[255];
 #define TOTAL_ZONE 9
 static uint8_t zone_alert_state[TOTAL_ZONE];
 uint16_t zone_raw_value[TOTAL_ZONE];
-uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300,0};
-uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700,0};
-// uint16_t zone_lower_limit[TOTAL_ZONE] = {500,500,500,500,500,500,500,500,0};
-// uint16_t zone_upper_limit[TOTAL_ZONE] = {900,900,900,900,900,900,900,900,0};
+// uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300,0};
+// uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700,0};
+uint16_t zone_lower_limit[TOTAL_ZONE] = {500,500,500,500,500,500,500,500,0};
+uint16_t zone_upper_limit[TOTAL_ZONE] = {900,900,900,900,900,900,900,900,0};
 
 uint16_t alert_flg = 0;
 uint16_t prev_alert_flg = 0;
@@ -106,14 +109,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         topic_buff[0] = 0;
-        sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/CLEAR",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        sprintf(topic_buff,"/ZIGRON/%s/CLEAR",mac_string);
         msg_id = esp_mqtt_client_subscribe(client, topic_buff, 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         topic_buff[0] = 0;
-        sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/COMMAND",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        sprintf(topic_buff,"/ZIGRON/%s/COMMAND",mac_string);
         msg_id = esp_mqtt_client_subscribe(client, topic_buff, 0);
         ESP_LOGI(TAG, "subscribe successful, msg_id=%d", msg_id);
-        topic_buff[0] = 0;
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -121,8 +123,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        msg_id = esp_mqtt_client_publish(client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        // msg_id = esp_mqtt_client_publish(client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
+        // ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -134,6 +136,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
+        // if(event->topic == )
         zone_alert_state[0] = 0;zone_alert_state[1] = 0;zone_alert_state[2] = 0;zone_alert_state[3] = 0;
         zone_alert_state[4] = 0;zone_alert_state[5] = 0;zone_alert_state[6] = 0;zone_alert_state[7] = 0;
         zone_alert_state[8] = 0;
@@ -158,6 +161,9 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     esp_read_mac( mac_addr, ESP_MAC_EFUSE_FACTORY);
+    sprintf(mac_string,"%02X%02X%02X%02X%02X%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    ESP_LOGI(TAG, "MAC address %s",mac_string);
+
     event_group = xEventGroupCreate();
 
     mcpInit(&dev, MCP3008, CONFIG_MISO_GPIO, CONFIG_MOSI_GPIO, CONFIG_SCLK_GPIO, CONFIG_CS_GPIO, MCP_SINGLE);
@@ -208,8 +214,8 @@ extern "C" void app_main(void)
 
     data_buff[0] = 0;
     topic_buff[0] = 0;
-    sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
-    modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
+    sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,%s,%s]}%c",
+    modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,FW_VER,mac_string,0);
    
     // sprintf(topic_buff,"03345472486");
     // dce->alert_sms(topic_buff, data_buff);
@@ -220,9 +226,6 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "IMEI %s",modem_dna.imei.c_str());
     ESP_LOGI(TAG, "module %s",modem_dna.module_name.c_str());
     ESP_LOGI(TAG, "CSQ %d %d",modem_dna.signal_quality, modem_dna.ber);
-
-    ESP_LOGI(TAG, "\"%02X%02X%02X%02X%02X%02X\" MAC address",
-        mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
     // esp_http_client_config_t config = {
     //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
@@ -260,19 +263,19 @@ extern "C" void app_main(void)
         {  
             data_buff[0] = 0;
             topic_buff[0] = 0;
-            sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d]}%c",
+            sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,\"%s\",%lld]}%c",
             zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],zone_raw_value[5],zone_raw_value[6],
             zone_raw_value[7],zone_raw_value[8],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],zone_alert_state[3],
             zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],zone_alert_state[8],
-            modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,0);
+            modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,FW_VER,esp_timer_get_time()/1000000,0);
             
             if(prev_alert_flg != alert_flg)
             {
-                sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/ALERT",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+                sprintf(topic_buff,"/ZIGRON/%s/ALERT",mac_string);
             }
             else
             {
-                sprintf(topic_buff,"/ZIGRON/%02X%02X%02X%02X%02X%02X/HB",mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+                sprintf(topic_buff,"/ZIGRON/%s/HB",mac_string);
             } 
             int publish_response = esp_mqtt_client_publish(mqtt_client, topic_buff, data_buff, 0, 0, 0);
             
