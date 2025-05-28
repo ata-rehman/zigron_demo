@@ -154,6 +154,20 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+    switch (evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            ESP_LOGI(TAG, "Received data: %.*s", evt->data_len, (char*)evt->data);
+            break;
+        case HTTP_EVENT_ERROR:
+            ESP_LOGE(TAG, "HTTP_EVENT_ERROR");
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
 extern "C" void app_main(void)
 {
     /* Init and register system/core components */
@@ -227,30 +241,50 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "module %s",modem_dna.module_name.c_str());
     ESP_LOGI(TAG, "CSQ %d %d",modem_dna.signal_quality, modem_dna.ber);
     
+
+    esp_transport_handle_t at = esp_transport_at_init(dce.get());
+    esp_transport_handle_t ssl = esp_transport_tls_init(at);
     // esp_http_client_config_t config = {
-    //     .url = CONFIG_EXAMPLE_PERFORM_OTA_URI,
-    //     // .cert_pem = (char *)server_cert_pem_start,
+    //     .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/Geyser_switch_test.ino.nodemcu.bin",
+    //     // .url = "http://github.com/ata-rehman/smarthome/blob/main/Geyser_switch_test.ino.nodemcu.bin",
+    //     // .port = 80,
+    //     .timeout_ms = 10000,
+    //     .event_handler = http_event_handler,  // Add this line
+    //     .transport_type = HTTP_TRANSPORT_OVER_SSL,
+    //     .transport = ssl,
     // };
+
     // esp_https_ota_config_t ota_config = {
     //     .http_config = &config,
     // };
 
-    // esp_transport_handle_t at = esp_transport_at_init(dce.get());
-    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    // config->transport.
-    // // config.network.transport = ssl;
-
+    // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
+    // vTaskDelay(pdMS_TO_TICKS(500));
     // esp_err_t ret = esp_https_ota(&ota_config);
     // if (ret == ESP_OK) {
     //     esp_restart();
+    // } else {
+    //     ESP_LOGE(TAG, "OTA failed with error: %s", esp_err_to_name(ret));
     // }
+
+    // esp_http_client_config_t test_config = {
+    //     .url = "https://google.com",
+    //     .timeout_ms = 10000,
+    //     .event_handler = http_event_handler,
+    //     .transport_type = HTTP_TRANSPORT_OVER_TCP,
+    //     .transport = ssl,
+    // };
+    // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
+    // vTaskDelay(pdMS_TO_TICKS(500));
+    // esp_http_client_handle_t client = esp_http_client_init(&test_config);
+    // esp_err_t err = esp_http_client_perform(client);
 
     esp_mqtt_client_config_t mqtt_config = {};
     mqtt_config.broker.address.port = BROKER_PORT;
     mqtt_config.session.message_retransmit_timeout = 10000;
     mqtt_config.broker.address.uri = "mqtt://" BROKER_URL;
-    esp_transport_handle_t at = esp_transport_at_init(dce.get());
-    esp_transport_handle_t ssl = esp_transport_tls_init(at);
+    // esp_transport_handle_t at = esp_transport_at_init(dce.get());
+    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
 
     mqtt_config.network.transport = ssl;
 
