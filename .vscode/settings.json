@@ -8,5 +8,9 @@
             "port": 1883,
             "clientId": "vsmqtt_client_c84e"
         }
-    ]
+    ],
+    "files.associations": {
+        "cstddef": "cpp",
+        "limits": "cpp"
+    }
 }

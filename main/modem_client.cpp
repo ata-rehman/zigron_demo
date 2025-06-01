@@ -29,11 +29,15 @@
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
 
+#include "nvs_flash.h"
+#include "wifi_app.h"
+#include "sntp_time_sync.h"
+
 #define PACKET_TIMEOUT 600                  //30 seconds
 #define BROKER_URL "mqtt.eclipseprojects.io"
 #define BROKER_PORT 8883
 
-#define FW_VER "0.01"
+#define FW_VER "0.02"
 
 MCP_t dev;
 
@@ -60,6 +64,35 @@ uint16_t alert_flg = 0;
 uint16_t prev_alert_flg = 0;
 static uint16_t loop_counter = 0;
 static uint16_t prev_loop_counter = 0;
+
+
+// Public Function Definition
+
+/*
+ * Get the Temperature Values
+ * @return temperature value
+ */
+uint8_t get_temperature(void)
+{
+  return 10;
+}
+
+/*
+ * Get the Humidity Values
+ * @return humidity value
+ */
+uint8_t get_humidity(void)
+{
+  return 90;
+}
+
+// Private Function Prototypes
+static void wifi_application_connected_events( void )
+{
+  ESP_LOGI(TAG, "WiFi Application Connected!");
+  sntp_time_sync_task_start();
+}
+
 
 static void periodic_timer_callback(void* arg)
 {
@@ -170,9 +203,23 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 
 extern "C" void app_main(void)
 {
+    esp_err_t ret = nvs_flash_init();
+    if ( (ret == ESP_ERR_NVS_NO_FREE_PAGES) || (ret == ESP_ERR_NVS_NEW_VERSION_FOUND) )
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Start WiFi
+    wifi_app_start();
+
+    // Set Connected Event callback
+    wifi_app_set_callback(&wifi_application_connected_events);
+
     /* Init and register system/core components */
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // ESP_ERROR_CHECK(esp_netif_init());
+    // ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     esp_read_mac( mac_addr, ESP_MAC_EFUSE_FACTORY);
     sprintf(mac_string,"%02X%02X%02X%02X%02X%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
@@ -244,28 +291,28 @@ extern "C" void app_main(void)
 
     esp_transport_handle_t at = esp_transport_at_init(dce.get());
     esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    // esp_http_client_config_t config = {
-    //     .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/Geyser_switch_test.ino.nodemcu.bin",
-    //     // .url = "http://github.com/ata-rehman/smarthome/blob/main/Geyser_switch_test.ino.nodemcu.bin",
-    //     // .port = 80,
-    //     .timeout_ms = 10000,
-    //     .event_handler = http_event_handler,  // Add this line
-    //     .transport_type = HTTP_TRANSPORT_OVER_SSL,
-    //     .transport = ssl,
-    // };
+    esp_http_client_config_t config = {       
+        .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/MultiSerial.ino.bin",
+        .timeout_ms = 30000,  // Increased timeout
+        .event_handler = http_event_handler,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .buffer_size = 4096,
+        .buffer_size_tx = 4096,
+        .transport = ssl,
+    };
 
-    // esp_https_ota_config_t ota_config = {
-    //     .http_config = &config,
-    // };
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
 
-    // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
-    // vTaskDelay(pdMS_TO_TICKS(500));
-    // esp_err_t ret = esp_https_ota(&ota_config);
-    // if (ret == ESP_OK) {
-    //     esp_restart();
-    // } else {
-    //     ESP_LOGE(TAG, "OTA failed with error: %s", esp_err_to_name(ret));
-    // }
+    ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
+    vTaskDelay(pdMS_TO_TICKS(500));
+    ret = esp_https_ota(&ota_config);
+    if (ret == ESP_OK) {
+        esp_restart();
+    } else {
+        ESP_LOGE(TAG, "OTA failed with error: %s", esp_err_to_name(ret));
+    }
 
     // esp_http_client_config_t test_config = {
     //     .url = "https://google.com",
@@ -283,9 +330,6 @@ extern "C" void app_main(void)
     mqtt_config.broker.address.port = BROKER_PORT;
     mqtt_config.session.message_retransmit_timeout = 10000;
     mqtt_config.broker.address.uri = "mqtt://" BROKER_URL;
-    // esp_transport_handle_t at = esp_transport_at_init(dce.get());
-    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
-
     mqtt_config.network.transport = ssl;
 
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
@@ -322,11 +366,5 @@ extern "C" void app_main(void)
         prev_alert_flg = alert_flg;
 
         gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(1);
-        // gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);vTaskDelay(1);
-        // if(prev_loop_counter == loop_counter)
-        // {
-        //     esp_restart();
-        // }       
-        // prev_loop_counter = loop_counter;
     }
 }
