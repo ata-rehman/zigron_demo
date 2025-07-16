@@ -34,10 +34,10 @@
 #include "sntp_time_sync.h"
 
 #define PACKET_TIMEOUT 600                  //30 seconds
-#define BROKER_URL "mqtt.eclipseprojects.io"
+#define BROKER_URL "broker.emqx.io"
 #define BROKER_PORT 8883
 
-#define FW_VER "0.02"
+#define FW_VER "0.03"
 
 MCP_t dev;
 
@@ -291,28 +291,28 @@ extern "C" void app_main(void)
 
     esp_transport_handle_t at = esp_transport_at_init(dce.get());
     esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    esp_http_client_config_t config = {       
-        .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/MultiSerial.ino.bin",
-        .timeout_ms = 30000,  // Increased timeout
-        .event_handler = http_event_handler,
-        .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .buffer_size = 4096,
-        .buffer_size_tx = 4096,
-        .transport = ssl,
-    };
+    // esp_http_client_config_t config = {       
+    //     .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/MultiSerial.ino.bin",
+    //     .timeout_ms = 30000,  // Increased timeout
+    //     .event_handler = http_event_handler,
+    //     .transport_type = HTTP_TRANSPORT_OVER_SSL,
+    //     .buffer_size = 4096,
+    //     .buffer_size_tx = 4096,
+    //     .transport = ssl,
+    // };
 
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-    };
+    // esp_https_ota_config_t ota_config = {
+    //     .http_config = &config,
+    // };
 
-    ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ret = esp_https_ota(&ota_config);
-    if (ret == ESP_OK) {
-        esp_restart();
-    } else {
-        ESP_LOGE(TAG, "OTA failed with error: %s", esp_err_to_name(ret));
-    }
+    // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
+    // vTaskDelay(pdMS_TO_TICKS(500));
+    // ret = esp_https_ota(&ota_config);
+    // if (ret == ESP_OK) {
+    //     esp_restart();
+    // } else {
+    //     ESP_LOGE(TAG, "OTA failed with error: %s", esp_err_to_name(ret));
+    // }
 
     // esp_http_client_config_t test_config = {
     //     .url = "https://google.com",
