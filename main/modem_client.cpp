@@ -34,7 +34,7 @@
 #include "sntp_time_sync.h"
 
 #define PACKET_TIMEOUT 600                  //30 seconds
-#define BROKER_URL "broker.emqx.io"
+#define BROKER_URL "broker.hivemq.com"
 #define BROKER_PORT 8883
 
 #define FW_VER "0.03"
