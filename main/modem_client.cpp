@@ -290,20 +290,21 @@ extern "C" void app_main(void)
     
 
     esp_transport_handle_t at = esp_transport_at_init(dce.get());
-    esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    // esp_http_client_config_t config = {       
-    //     .url = "https://raw.githubusercontent.com/ata-rehman/smarthome/main/MultiSerial.ino.bin",
-    //     .timeout_ms = 30000,  // Increased timeout
-    //     .event_handler = http_event_handler,
-    //     .transport_type = HTTP_TRANSPORT_OVER_SSL,
-    //     .buffer_size = 4096,
-    //     .buffer_size_tx = 4096,
-    //     .transport = ssl,
-    // };
+    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
+    esp_http_client_config_t config = {       
+        .url = "http://54.194.219.149:45056/firmware/MultiSerial.ino.bin",
+        .port = 45056,
+        .timeout_ms = 30000,  // Increased timeout
+        // .event_handler = http_event_handler,
+        .transport_type = HTTP_TRANSPORT_OVER_TCP,
+        .buffer_size = 4096,
+        .buffer_size_tx = 4096,
+        .transport = at,
+    };
 
-    // esp_https_ota_config_t ota_config = {
-    //     .http_config = &config,
-    // };
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
 
     // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
     // vTaskDelay(pdMS_TO_TICKS(500));
@@ -327,10 +328,10 @@ extern "C" void app_main(void)
     // esp_err_t err = esp_http_client_perform(client);
 
     esp_mqtt_client_config_t mqtt_config = {};
-    mqtt_config.broker.address.port = BROKER_PORT;
+    mqtt_config.broker.address.port = 45055;
     mqtt_config.session.message_retransmit_timeout = 10000;
-    mqtt_config.broker.address.uri = "mqtt://" BROKER_URL;
-    mqtt_config.network.transport = ssl;
+    mqtt_config.broker.address.uri = "mqtt://zigron:zigron123@54.194.219.149";
+    mqtt_config.network.transport = at;
 
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
