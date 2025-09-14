@@ -14,6 +14,19 @@
 #define OTA_UPDATE_SUCCESSFUL             (1)
 #define OTA_UPDATE_FAILED                 (-1)
 
+// Add these macros after existing ones
+#define HTTP_SERVER_AUTH_USERNAME      "admin"
+#define HTTP_SERVER_AUTH_PASSWORD      "admin"
+#define HTTP_SERVER_REALM              "Zigron Web Server"
+
+// Add this enum for authentication status
+typedef enum http_server_auth_status
+{
+  HTTP_AUTH_STATUS_NONE = 0,
+  HTTP_AUTH_STATUS_SUCCESS,
+  HTTP_AUTH_STATUS_FAILED,
+} http_server_auth_status_e;
+
 /*
  * Messages for the HTTP Monitor
  */

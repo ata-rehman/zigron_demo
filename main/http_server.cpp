@@ -17,6 +17,12 @@
 #include "wifi_app.h"
 #include "sntp_time_sync.h"
 
+#include <map>
+#include <string>
+#include <ctime>
+#include <cstdlib>
+#include <esp_random.h>
+
 // Macros
 #define HTTP_SERVER_MAX_URI_HANDLERS                    (20u)
 #define HTTP_SERVER_RECEIVE_WAIT_TIMEOUT                (10u)   // in seconds
@@ -79,6 +85,9 @@ static esp_err_t http_server_wifi_disconnect_json_handler(httpd_req_t *req);
 static esp_err_t http_server_get_local_time_handler(httpd_req_t *req);
 static esp_err_t http_server_get_ap_ssid_handler(httpd_req_t *req);
 static void http_server_fw_update_reset_timer(void);
+static bool http_server_validate_session(httpd_req_t *req);
+static esp_err_t http_server_login_handler(httpd_req_t *req);
+
 
 // Public Function Definition
 /*
@@ -127,13 +136,120 @@ void http_server_fw_update_reset_cb(void *arg)
  * @param msg_id Message ID from the http_server_msg_e enum
  * @return pdTRUE if an item was successfully sent to the queue, otherwise pdFALSE
  */
-BaseType_t http_server_monitor_send_msg(http_server_msg_e msg_id)
+
+ BaseType_t http_server_monitor_send_msg(http_server_msg_e msg_id)
 {
   http_server_q_msg_t msg;
   msg.msg_id = msg_id;
   return xQueueSend(http_server_monitor_q_handle, &msg, portMAX_DELAY );
 }
 
+// Add this function before other private functions
+static http_server_auth_status_e http_server_authenticate(httpd_req_t *req)
+{
+    char *auth_header = NULL;
+    size_t auth_header_len = httpd_req_get_hdr_value_len(req, "Authorization");
+    
+    if (auth_header_len == 0) {
+        return HTTP_AUTH_STATUS_NONE;
+    }
+
+    auth_header = (char *)malloc(auth_header_len + 1);
+    if (auth_header == NULL) {
+        return HTTP_AUTH_STATUS_FAILED;
+    }
+
+    if (httpd_req_get_hdr_value_str(req, "Authorization", auth_header, auth_header_len + 1) != ESP_OK) {
+        free(auth_header);
+        return HTTP_AUTH_STATUS_FAILED;
+    }
+
+    // Check if it's Basic auth
+    if (strncmp(auth_header, "Basic ", 6) != 0) {
+        free(auth_header);
+        return HTTP_AUTH_STATUS_FAILED;
+    }
+
+    // Simple credential check (for demo purposes)
+    // In production, you should use proper base64 decoding
+    char expected_auth[] = "Basic YWRtaW46cGFzc3dvcmQ="; // admin:password base64 encoded
+    
+    http_server_auth_status_e status = (strcmp(auth_header, expected_auth) == 0) ? 
+                                      HTTP_AUTH_STATUS_SUCCESS : HTTP_AUTH_STATUS_FAILED;
+
+    free(auth_header);
+    return status;
+}
+
+static std::string generate_session_id()
+{
+    char session_id[33];
+    for(int i = 0; i < 32; i++) {
+        session_id[i] = "0123456789ABCDEF"[esp_random() % 16];
+    }
+    session_id[32] = '\0';
+    return std::string(session_id);
+}
+
+// In http_server.cpp, add these variables
+static std::map<std::string, time_t> active_sessions;
+static const char *SESSION_COOKIE_NAME = "ESP32_SESSION";
+static const int SESSION_TIMEOUT = 3600; // 1 hour
+
+// Session validation function
+static bool http_server_validate_session(httpd_req_t *req)
+{
+    char session_id[50] = {0};
+    
+    // Get session cookie
+    size_t session_id_len = sizeof(session_id);
+    if (httpd_req_get_cookie_val(req, SESSION_COOKIE_NAME, session_id, &session_id_len) != ESP_OK) {
+        return false;
+    }
+    
+    auto it = active_sessions.find(session_id);
+    if (it == active_sessions.end()) {
+        return false;
+    }
+    
+    // Check if session expired
+    if (time(NULL) - it->second > SESSION_TIMEOUT) {
+        active_sessions.erase(it);
+        return false;
+    }
+    
+    // Update session time
+    it->second = time(NULL);
+    return true;
+}
+
+// Login handler
+static esp_err_t http_server_login_handler(httpd_req_t *req)
+{
+    // Parse POST data for username and password
+    // Compare with stored credentials
+    // If valid, create session and set cookie
+    
+    char *content = (char*)malloc(req->content_len + 1);
+    httpd_req_recv(req, content, req->content_len);
+    content[req->content_len] = '\0';
+    
+    // Parse JSON or form data
+    // Validate credentials
+    
+    // Generate session ID
+    std::string session_id = generate_session_id();
+    active_sessions[session_id] = time(NULL);
+    
+    // Set cookie
+    char cookie[100];
+    snprintf(cookie, sizeof(cookie), "%s=%s; Path=/; HttpOnly", SESSION_COOKIE_NAME, session_id.c_str());
+    httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+    
+    httpd_resp_send(req, "{\"status\":\"success\"}", HTTPD_RESP_USE_STRLEN);
+    free(content);
+    return ESP_OK;
+}
 
 // Private Function Definitions
 /*
@@ -400,19 +516,37 @@ static esp_err_t http_server_j_query_handler(httpd_req_t *req)
  */
 static esp_err_t http_server_index_html_handler(httpd_req_t *req)
 {
-  esp_err_t error;
-  ESP_LOGI(TAG, "Index HTML Requested");
-  httpd_resp_set_type( req, "text/html");
-  error = httpd_resp_send(req, (const char*)index_html_start, index_html_end-index_html_start );
-  if( error != ESP_OK )
-  {
-    ESP_LOGI( TAG, "http_server_index_html_handler: Error %d while sending Response", error );
-  }
-  else
-  {
-    ESP_LOGI( TAG, "http_server_index_html_handler: Response Sent Successfully" );
-  }
-  return error;
+    // Check authentication
+    http_server_auth_status_e auth_status = http_server_authenticate(req);
+    
+    if (auth_status == HTTP_AUTH_STATUS_NONE) {
+        // No credentials provided, request authentication
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"" HTTP_SERVER_REALM "\"");
+        httpd_resp_send(req, "<h1>401 Unauthorized</h1>", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    if (auth_status == HTTP_AUTH_STATUS_FAILED) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_send(req, "<h1>401 Unauthorized - Invalid credentials</h1>", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+
+    // Authentication successful, serve the page
+    esp_err_t error;
+    ESP_LOGI(TAG, "Index HTML Requested");
+    httpd_resp_set_type(req, "text/html");
+    error = httpd_resp_send(req, (const char*)index_html_start, index_html_end-index_html_start);
+    
+    if (error != ESP_OK) {
+        ESP_LOGI(TAG, "http_server_index_html_handler: Error %d while sending Response", error);
+    } else {
+        ESP_LOGI(TAG, "http_server_index_html_handler: Response Sent Successfully");
+    }
+    return error;
 }
 
 /*

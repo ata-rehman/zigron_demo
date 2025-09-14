@@ -20,7 +20,7 @@ typedef void (*wifi_connected_event_callback_t)(void);
 
 // Macros
 // WiFi Application Settings
-#define WIFI_AP_SSID                  "ESP32_AP"    			// Access Point Names
+#define WIFI_AP_SSID                  "ZIGRON_AP"    			// Access Point Names
 #define WIFI_AP_PASSWORD              "12345678"    			// Access Point Password
 #define WIFI_AP_CHANNEL               1             			// Access Point Channels
 #define WIFI_AP_SSID_HIDDEN           0             			// Access Point Visibility
