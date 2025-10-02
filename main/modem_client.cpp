@@ -52,13 +52,13 @@ struct sock_dce::MODEM_DNA_STATS modem_dna;
 char data_buff[255];
 char topic_buff[255];
 
-#define TOTAL_ZONE 9
+#define TOTAL_ZONE 10
 static uint8_t zone_alert_state[TOTAL_ZONE];
 uint16_t zone_raw_value[TOTAL_ZONE];
-// uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300,0};
-// uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700,0};
-uint16_t zone_lower_limit[TOTAL_ZONE] = {500,500,500,500,500,500,500,500,0};
-uint16_t zone_upper_limit[TOTAL_ZONE] = {900,900,900,900,900,900,900,900,0};
+// uint16_t zone_lower_limit[TOTAL_ZONE] = {300,300,300,300,300,300,300,300,0,0};
+// uint16_t zone_upper_limit[TOTAL_ZONE] = {700,700,700,700,700,700,700,700,0,0};
+uint16_t zone_lower_limit[TOTAL_ZONE] = {500,500,500,500,500,500,500,500,0,0};
+uint16_t zone_upper_limit[TOTAL_ZONE] = {900,900,900,900,900,900,900,900,0,0};
 
 uint16_t alert_flg = 0;
 uint16_t prev_alert_flg = 0;
@@ -98,18 +98,19 @@ static void periodic_timer_callback(void* arg)
 {
     loop_counter++;
     gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);
-    if(zone_raw_value[TOTAL_ZONE-1] != gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN))
+    if(zone_raw_value[TOTAL_ZONE-2] != gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN))
     {
         alert_flg |= 0x0100;
-        zone_alert_state[TOTAL_ZONE-1] = 0x01;
+        zone_alert_state[TOTAL_ZONE-2] = 0x01;
     }
     else
     {
         alert_flg &= ~0x0100;
     }
 
-    zone_raw_value[TOTAL_ZONE-1] = gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN);
-    for(uint8_t i = 0; i < (TOTAL_ZONE-1); i++)
+    zone_raw_value[TOTAL_ZONE-1] = gpio_get_level((gpio_num_t)39);
+    zone_raw_value[TOTAL_ZONE-2] = gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN);
+    for(uint8_t i = 0; i < (TOTAL_ZONE-2); i++)
     {
         zone_raw_value[i] = mcpReadData(&dev, i);
         
@@ -128,6 +129,7 @@ static void periodic_timer_callback(void* arg)
         {
             alert_flg &= ~bitmask;
         }
+        // ESP_LOGI(TAG, " ARM/DISARM STATUS %d ", gpio_get_level((gpio_num_t)39));
         // ESP_LOGI(TAG, "%d %d %X %X %d %d %d %d", i, bitmask, alert_flg, prev_alert_flg, zone_lower_limit[i], zone_upper_limit[i], zone_raw_value[i], zone_alert_state[i]);
     }
 }
@@ -189,13 +191,29 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
-        case HTTP_EVENT_ON_DATA:
-            ESP_LOGI(TAG, "Received data: %.*s", evt->data_len, (char*)evt->data);
-            break;
         case HTTP_EVENT_ERROR:
-            ESP_LOGE(TAG, "HTTP_EVENT_ERROR");
+            ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
             break;
-        default:
+        case HTTP_EVENT_ON_CONNECTED:
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
+            break;
+        case HTTP_EVENT_HEADER_SENT:
+            ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
+            break;
+        case HTTP_EVENT_ON_HEADER:
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+            break;
+        case HTTP_EVENT_ON_DATA:
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+            break;
+        case HTTP_EVENT_ON_FINISH:
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
+            break;
+        case HTTP_EVENT_DISCONNECTED:
+            ESP_LOGD(TAG, "HTTP_EVENT_DISCONNECTED");
+            break;
+        case HTTP_EVENT_REDIRECT:
+            ESP_LOGD(TAG, "HTTP_EVENT_REDIRECT");
             break;
     }
     return ESP_OK;
@@ -216,6 +234,7 @@ extern "C" void app_main(void)
 
     // Set Connected Event callback
     wifi_app_set_callback(&wifi_application_connected_events);
+    // while(1)vTaskDelay(1);
 
     /* Init and register system/core components */
     // ESP_ERROR_CHECK(esp_netif_init());
@@ -294,11 +313,12 @@ extern "C" void app_main(void)
     esp_http_client_config_t config = {       
         .url = "http://54.194.219.149:45056/firmware/MultiSerial.ino.bin",
         .port = 45056,
-        .timeout_ms = 30000,  // Increased timeout
-        // .event_handler = http_event_handler,
+        .timeout_ms = 10000,  // Increased timeout
+        .event_handler = http_event_handler,
         .transport_type = HTTP_TRANSPORT_OVER_TCP,
         .buffer_size = 4096,
         .buffer_size_tx = 4096,
+        .keep_alive_enable = true,
         .transport = at,
     };
 
@@ -342,10 +362,10 @@ extern "C" void app_main(void)
         {  
             data_buff[0] = 0;
             topic_buff[0] = 0;
-            sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,\"%s\",%lld]}%c",
+            sprintf(data_buff,"{\"RAW\":[%d,%d,%d,%d,%d,%d,%d,%d,%d,%d],\"ALERT\":[%d,%d,%d,%d,%d,%d,%d,%d,%d,%d],\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,\"%s\",%lld]}%c",
             zone_raw_value[0],zone_raw_value[1],zone_raw_value[2],zone_raw_value[3],zone_raw_value[4],zone_raw_value[5],zone_raw_value[6],
-            zone_raw_value[7],zone_raw_value[8],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],zone_alert_state[3],
-            zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],zone_alert_state[8],
+            zone_raw_value[7],zone_raw_value[8],zone_raw_value[9],zone_alert_state[0],zone_alert_state[1],zone_alert_state[2],zone_alert_state[3],
+            zone_alert_state[4],zone_alert_state[5],zone_alert_state[6],zone_alert_state[7],zone_alert_state[8],zone_alert_state[9],
             modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,FW_VER,esp_timer_get_time()/1000000,0);
             
             if(prev_alert_flg != alert_flg)
@@ -367,5 +387,8 @@ extern "C" void app_main(void)
         prev_alert_flg = alert_flg;
 
         gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(1);
+
+        // gpio_set_direction( (gpio_num_t)40, GPIO_MODE_OUTPUT);
+        // gpio_set_level( (gpio_num_t)40, 1);vTaskDelay(100);gpio_set_level( (gpio_num_t)40, 0); gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);vTaskDelay(100);
     }
 }
