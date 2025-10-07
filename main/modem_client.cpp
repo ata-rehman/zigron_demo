@@ -32,6 +32,7 @@
 #include "nvs_flash.h"
 #include "wifi_app.h"
 #include "sntp_time_sync.h"
+#include "protocol_examples_common.h"
 
 #define PACKET_TIMEOUT 600                  //30 seconds
 #define BROKER_URL "broker.hivemq.com"
@@ -112,7 +113,7 @@ static void periodic_timer_callback(void* arg)
     zone_raw_value[TOTAL_ZONE-2] = gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN);
     for(uint8_t i = 0; i < (TOTAL_ZONE-2); i++)
     {
-        zone_raw_value[i] = mcpReadData(&dev, i);
+        // zone_raw_value[i] = mcpReadData(&dev, i);
         
         uint16_t bitmask = 1 << i;
         if (zone_raw_value[i] < zone_lower_limit[i])
@@ -230,15 +231,15 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     // Start WiFi
-    wifi_app_start();
+    // wifi_app_start();
 
     // Set Connected Event callback
-    wifi_app_set_callback(&wifi_application_connected_events);
+    // wifi_app_set_callback(&wifi_application_connected_events);
     // while(1)vTaskDelay(1);
 
     /* Init and register system/core components */
-    // ESP_ERROR_CHECK(esp_netif_init());
-    // ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     esp_read_mac( mac_addr, ESP_MAC_EFUSE_FACTORY);
     sprintf(mac_string,"%02X%02X%02X%02X%02X%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
@@ -264,6 +265,8 @@ extern "C" void app_main(void)
     /* The timer has been created but is not running yet */
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 100000));
 
+    ESP_ERROR_CHECK(example_connect());
+
     /* Configure and create the UART DTE */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     /* setup UART specific configuration based on kconfig options */
@@ -278,53 +281,53 @@ extern "C" void app_main(void)
     dte_config.task_priority = CONFIG_EXAMPLE_MODEM_UART_EVENT_TASK_PRIORITY;
     dte_config.dte_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE / 2;
 
-    auto dte = esp_modem::create_uart_dte(&dte_config);
-    assert(dte);
+    // auto dte = esp_modem::create_uart_dte(&dte_config);
+    // assert(dte);
 
     /* Configure the DCE */
-    esp_modem_dce_config_t dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
+    // esp_modem_dce_config_t dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_EXAMPLE_MODEM_APN);
 
     /* create the DCE and initialize network manually (using AT commands) */
-    auto dce = sock_dce::create(&dce_config, std::move(dte));
+    // auto dce = sock_dce::create(&dce_config, std::move(dte));
 
-    while (!dce->init(&modem_dna))
-    {
-        ESP_LOGE(TAG,  "Failed to setup network 1");
-    }
+    // while (!dce->init(&modem_dna))
+    // {
+    //     ESP_LOGE(TAG,  "Failed to setup network 1");
+    // }
 
-    data_buff[0] = 0;
-    topic_buff[0] = 0;
-    sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,%s,%s]}%c",
-    modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,FW_VER,mac_string,0);
+    // data_buff[0] = 0;
+    // topic_buff[0] = 0;
+    // sprintf(data_buff,"{\"DNA\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%d,%s,%s]}%c",
+    // modem_dna.ip_address.c_str(),modem_dna.operator_name.c_str(),modem_dna.imsi.c_str(),modem_dna.imei.c_str(),modem_dna.module_name.c_str(),modem_dna.signal_quality,FW_VER,mac_string,0);
    
-    // sprintf(topic_buff,"03345472486");
-    // dce->alert_sms(topic_buff, data_buff);
+    // // sprintf(topic_buff,"03345472486");
+    // // dce->alert_sms(topic_buff, data_buff);
 
-    ESP_LOGI(TAG, "Got IP %s", modem_dna.ip_address.c_str());
-    ESP_LOGI(TAG, "operater %s",modem_dna.operator_name.c_str());
-    ESP_LOGI(TAG, "IMSI %s",modem_dna.imsi.c_str());
-    ESP_LOGI(TAG, "IMEI %s",modem_dna.imei.c_str());
-    ESP_LOGI(TAG, "module %s",modem_dna.module_name.c_str());
-    ESP_LOGI(TAG, "CSQ %d %d",modem_dna.signal_quality, modem_dna.ber);
+    // ESP_LOGI(TAG, "Got IP %s", modem_dna.ip_address.c_str());
+    // ESP_LOGI(TAG, "operater %s",modem_dna.operator_name.c_str());
+    // ESP_LOGI(TAG, "IMSI %s",modem_dna.imsi.c_str());
+    // ESP_LOGI(TAG, "IMEI %s",modem_dna.imei.c_str());
+    // ESP_LOGI(TAG, "module %s",modem_dna.module_name.c_str());
+    // ESP_LOGI(TAG, "CSQ %d %d",modem_dna.signal_quality, modem_dna.ber);
     
 
-    esp_transport_handle_t at = esp_transport_at_init(dce.get());
-    // esp_transport_handle_t ssl = esp_transport_tls_init(at);
-    esp_http_client_config_t config = {       
-        .url = "http://54.194.219.149:45056/firmware/MultiSerial.ino.bin",
-        .port = 45056,
-        .timeout_ms = 10000,  // Increased timeout
-        .event_handler = http_event_handler,
-        .transport_type = HTTP_TRANSPORT_OVER_TCP,
-        .buffer_size = 4096,
-        .buffer_size_tx = 4096,
-        .keep_alive_enable = true,
-        .transport = at,
-    };
+    // esp_transport_handle_t at = esp_transport_at_init(dce.get());
+    // // esp_transport_handle_t ssl = esp_transport_tls_init(at);
+    // esp_http_client_config_t config = {       
+    //     .url = "http://54.194.219.149:45056/firmware/MultiSerial.ino.bin",
+    //     .port = 45056,
+    //     .timeout_ms = 10000,  // Increased timeout
+    //     .event_handler = http_event_handler,
+    //     .transport_type = HTTP_TRANSPORT_OVER_TCP,
+    //     .buffer_size = 4096,
+    //     .buffer_size_tx = 4096,
+    //     .keep_alive_enable = true,
+    //     // .transport = at,
+    // };
 
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-    };
+    // esp_https_ota_config_t ota_config = {
+    //     .http_config = &config,
+    // };
 
     // ESP_LOGI(TAG, "Free heap: %ld", esp_get_free_heap_size());
     // vTaskDelay(pdMS_TO_TICKS(500));
@@ -351,7 +354,7 @@ extern "C" void app_main(void)
     mqtt_config.broker.address.port = 45055;
     mqtt_config.session.message_retransmit_timeout = 10000;
     mqtt_config.broker.address.uri = "mqtt://zigron:zigron123@54.194.219.149";
-    mqtt_config.network.transport = at;
+    // mqtt_config.network.transport = at;
 
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, NULL);
@@ -386,7 +389,7 @@ extern "C" void app_main(void)
         }
         prev_alert_flg = alert_flg;
 
-        gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(1);
+        gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(10);
 
         // gpio_set_direction( (gpio_num_t)40, GPIO_MODE_OUTPUT);
         // gpio_set_level( (gpio_num_t)40, 1);vTaskDelay(100);gpio_set_level( (gpio_num_t)40, 0); gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);vTaskDelay(100);

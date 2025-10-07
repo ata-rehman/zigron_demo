@@ -1,6 +1,6 @@
 {
     "idf.flashType": "UART",
-    "idf.portWin": "COM8",
+    "idf.portWin": "COM6",
     "vsmqtt.brokerProfiles": [
         {
             "name": "eclipse",
@@ -11,6 +11,9 @@
     ],
     "files.associations": {
         "cstddef": "cpp",
-        "limits": "cpp"
+        "limits": "cpp",
+        "array": "cpp",
+        "string_view": "cpp",
+        "string": "cpp"
     }
 }
