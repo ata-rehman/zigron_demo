@@ -113,7 +113,7 @@ static void periodic_timer_callback(void* arg)
     zone_raw_value[TOTAL_ZONE-2] = gpio_get_level((gpio_num_t)CONFIG_EXAMPLE_BUZZER_STATUS_PIN);
     for(uint8_t i = 0; i < (TOTAL_ZONE-2); i++)
     {
-        // zone_raw_value[i] = mcpReadData(&dev, i);
+        zone_raw_value[i] = mcpReadData(&dev, i);
         
         uint16_t bitmask = 1 << i;
         if (zone_raw_value[i] < zone_lower_limit[i])
@@ -389,7 +389,7 @@ extern "C" void app_main(void)
         }
         prev_alert_flg = alert_flg;
 
-        gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(10);
+        gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 0);vTaskDelay(50);
 
         // gpio_set_direction( (gpio_num_t)40, GPIO_MODE_OUTPUT);
         // gpio_set_level( (gpio_num_t)40, 1);vTaskDelay(100);gpio_set_level( (gpio_num_t)40, 0); gpio_set_level( (gpio_num_t)CONFIG_EXAMPLE_LED_STATUS_PIN, 1);vTaskDelay(100);
